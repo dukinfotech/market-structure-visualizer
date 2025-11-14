@@ -19,7 +19,7 @@ signal = sma_signal == "SMA" ? ta.sma(macd, signalLen) : ta.ema(macd, signalLen)
 histogram = macd - signal
 
 const int LINE_WIDTH = 2
-const int LABEL_GAP = 5
+const int LABEL_GAP = 0
 
 
 // --- BOS, CHOCHH LOGIC ---
