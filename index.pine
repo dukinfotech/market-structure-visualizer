@@ -23,22 +23,54 @@ const int LABEL_GAP = 5
 
 
 // --- BOS, CHOCHH LOGIC ---
-var float lastExtremeHigh = na // Biến để lưu trữ giá cao nhất cuối cùng
-var float lastExtremeLow = na  // Biến để lưu trữ giá thấp nhất cuối cùng
-var int lastExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến của giá cao nhất cuối cùng
-var int lastExtremeLowBarIndex = na  // Biến để lưu trữ chỉ mục nến của giá thấp nhất cuối cùng
-var bool isLastBoS = false
-var bool isLastCHoCH = false
+var float lastExtremeHigh = na // Biến để lưu trữ đỉnh quan trọng cuối cùng
+var float lastExtremeLow = na  // Biến để lưu trữ đáy quan trọng cuối cùng
+var int lastExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng
+var int lastExtremeLowBarIndex = na  // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng
+var bool isLastBoS = false // Biến để theo dõi xem BoS đã xảy ra chưa
+var float prevDowntrendExtremeHigh = na // Biến để lưu trữ đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
+var float prevUptrendExtremeLow = na // Biến để lưu trữ đáy quan trọng cuối cùng của xu hướng tăng trước đó
+var int prevDowntrendExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
+var int prevUptrendExtremeLowBarIndex = na // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng của xu hướng tăng trước đó
 
+// --- BOS LOGIC ---
+// Kiểm tra nếu giá đóng cửa vượt qua giá cao nhất cuối cùng
 if not na (lastExtremeHigh) and close >= lastExtremeHigh and isLastBoS == false
     isLastBoS := true
     line.new(lastExtremeHighBarIndex, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.green, style=line.style_dashed, width=LINE_WIDTH)
     label.new(bar_index - LABEL_GAP, lastExtremeHigh + LABEL_GAP, text="BoS", color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
+    prevUptrendExtremeLow := low
+    for i = 1 to bar_index - lastExtremeHighBarIndex
+        if low[i] < prevUptrendExtremeLow   
+            prevUptrendExtremeLow := low[i]
+            prevUptrendExtremeLowBarIndex := bar_index - i
+    
+// Kiểm tra nếu giá đóng cửa vượt qua giá thấp nhất cuối cùng
 if not na (lastExtremeLow) and close <= lastExtremeLow and isLastBoS == false
     isLastBoS := true
     line.new(lastExtremeLowBarIndex, lastExtremeLow, bar_index, lastExtremeLow, color=color.red, style=line.style_dashed, width=LINE_WIDTH)
     label.new(bar_index - LABEL_GAP, lastExtremeLow - LABEL_GAP, text="BoS", color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
+    
+    prevDowntrendExtremeHigh := high
+    for i = 1 to bar_index - lastExtremeLowBarIndex
+        if low[i] < prevDowntrendExtremeHigh   
+            prevDowntrendExtremeHigh := low[i]
+            prevDowntrendExtremeHighBarIndex := bar_index - i
+
+// --- CHoCH LOGIC ---
+// Kiểm tra nếu giá đóng cửa vượt qua giá thấp nhất của xu hướng tăng trước đó
+if not na (prevUptrendExtremeLow) and close <= prevUptrendExtremeLow
+    line.new(prevUptrendExtremeLowBarIndex, prevUptrendExtremeLow, bar_index, prevUptrendExtremeLow, color=color.orange, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, prevUptrendExtremeLow - LABEL_GAP, text="CHoCH", color=color.orange, style=label.style_label_up, textcolor=color.white, size=size.small)
+    prevUptrendExtremeLow := na // Reset sau khi đã đánh dấu ChoCH
+
+// Kiểm tra nếu giá đóng cửa vượt qua giá cao nhất của xu hướng giảm trước đó
+if not na (prevDowntrendExtremeHigh) and close >= prevDowntrendExtremeHigh
+    line.new(prevDowntrendExtremeHighBarIndex, prevDowntrendExtremeHigh, bar_index, prevDowntrendExtremeHigh, color=color.orange, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, prevDowntrendExtremeHigh + LABEL_GAP, text="CHoCH", color=color.orange, style=label.style_label_down, textcolor=color.white, size=size.small)
+    prevDowntrendExtremeHigh := na // Reset sau khi đã đánh dấu ChoCH
+
 
 // --- SWING/CROSS POINT LOGIC ---
 
@@ -98,7 +130,7 @@ if isCross
                 if low[i] < extremePrice
                     extremePrice := low[i]
                     extremeBarIndex := bar_index - i
-
+                    
                     lastExtremeLow := extremePrice
                     lastExtremeLowBarIndex := extremeBarIndex
             else
