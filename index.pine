@@ -1,89 +1,103 @@
 // @version=5
-indicator("Market Structure Visualizer (Adjusted)", overlay=true, max_bars_back = 500) // Tăng max_bars_back
+indicator("MACD-based Market Structure Visualizer", overlay=true, max_bars_back = 500) // Tăng max_bars_back
 
 // --- INPUTS ---
-fastLen = input.int(12, "Fast Length", minval=1)
-slowLen = input.int(26, "Slow Length", minval=1)
-signalLen = input.int(9, "Signal Length", minval=1)
-swingLenMin = input.int(2, "Swing Length", minval=1)
 
-// --- MACD CALCULATION ---
-[macd, signal, histogram] = ta.macd(close, fastLen, slowLen, signalLen)
+
+
+
+// Getting inputs
+histogramMinLen = input.int(title = "Histogram Min Length", minval=1, defval=2)
+fastLen = input(title = "Fast Length", defval = 12)
+slowLen = input(title = "Slow Length", defval = 26)
+src = input(title = "Source", defval = close, display = display.data_window)
+signalLen = input.int(title = "Signal Smoothing",  minval = 1, maxval = 50, defval = 9)
+sma_source = input.string(title = "Oscillator MA Type",  defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
+sma_signal = input.string(title = "Signal Line MA Type", defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
+
+// Calculating
+fastMA = sma_source == "SMA" ? ta.sma(src, fastLen) : ta.ema(src, fastLen)
+slowMA = sma_source == "SMA" ? ta.sma(src, slowLen) : ta.ema(src, slowLen)
+macd = fastMA - slowMA
+signal = sma_signal == "SMA" ? ta.sma(macd, signalLen) : ta.ema(macd, signalLen)
+histogram = macd - signal
+
 
 // --- SWING/CROSS POINT LOGIC ---
-// Lưu trữ chỉ mục các thanh cắt nhau
+// Lưu trữ chỉ mục các nến xảy ra cắt nhau
 var int[] crossBarIndexs = array.new_int()
 var line lastLine = na // Biến để lưu trữ đối tượng đường kẻ cuối cùng
 
-// Phát hiện điểm cắt nhau ở cây nến trước (bỏ qua các nhịp pullbacks nhỏ)
-bool isCross = histogram * histogram[1] > 0
 
-for i = 1 to swingLenMin - 1
+// --- KIỂM TRA TÍN HIỆU CẮT NHAU ---
+// Phát hiện tại histogram trước đã đảo chiều (có xác nhận bởi nến đóng cửa), cây nến hiện tại là cấy nến của histogram thứ 2
+bool isCross = histogram * histogram[1] > 0 and barstate.isconfirmed
+
+// Kiểm tra các thanh histogram trung gian có đổi chiều không
+for i = 1 to histogramMinLen - 1
     isCross := isCross and histogram[i] * histogram[i + 1] < 0
 
-isCross := isCross and histogram[swingLenMin] * histogram[swingLenMin + 1] > 0
+// Kiểm tra thanh histogram cuối cùng có cùng chiều với thanh hiện tại không
+isCross := isCross and histogram[histogramMinLen] * histogram[histogramMinLen + 1] > 0
+
 
 // --- XỬ LÝ KHI CÓ TÍN HIỆU CẮT NHAU ---
-if isCross and barstate.isconfirmed
-    int crossBarIndex = bar_index - 1 // Chỉ mục thanh cắt (thanh trước)
-    label.new(crossBarIndex, high, text="X", color=#ff00d4, style=label.style_label_down, textcolor=color.black, size=size.tiny)
-    // 1. Lưu chỉ mục thanh hiện tại khi có tín hiệu cắt
+if isCross
+    int crossBarIndex = bar_index - 1 // Chỉ mục thanh trước (thanh xảy ra tín hiệu cắt)
+    
+    // 1. Lưu chỉ mục của cây nến hiện tại khi có tín hiệu cắt
     array.push(crossBarIndexs, crossBarIndex)
     
     crossBarSize = array.size(crossBarIndexs)
 
-    // 2. Chỉ tính toán và vẽ khi có ít nhất 3 điểm cắt (cần 3 chỉ mục: current, last, prev)
-    if crossBarSize >= 3
-        // Lấy 3 chỉ mục thanh cắt gần nhất:
+    // 2. Chỉ tính toán và vẽ khi có ít nhất 2 điểm cắt (cần 2 chỉ mục: current, last)
+    if crossBarSize >= 2
+        // Lấy 2 chỉ mục của 2 cây nến xảy ra tín hiệu cắt gần nhất:
         int currentCrossIndex = array.get(crossBarIndexs, crossBarSize - 1)
         int lastCrossIndex    = array.get(crossBarIndexs, crossBarSize - 2)
-        int prevCrossIndex = array.get(crossBarIndexs, crossBarSize - 3)
 
         // --- TÌM ĐIỂM CỰC TRỊ TRONG SWING TRƯỚC ---
         // Tìm giá cực trị giữa lastCrossIndex và currentCrossIndex.
         
         // Khởi tạo giá trị cao nhất
         float extremePrice = -1000000.0
+        int extremeBarIndex = 0
         
         // Vòng lặp để tìm giá cao nhất/thấp nhất TỪ lastCrossIndex ĐẾN currentCrossIndex
         // Index trong Pine Script được tham chiếu bằng [offset]
         // Offset cho lastCrossIndex là bar_index - lastCrossIndex
         // Offset cho currentCrossIndex là bar_index - currentCrossIndex
 
-        int offsetStart = bar_index - currentCrossIndex // Bắt đầu từ thanh gần nhất của swing
-        int offsetEnd = bar_index - lastCrossIndex // Kết thúc ở thanh xa nhất của swing
-        
-        // Lặp qua các thanh trong khoảng từ lastCrossIndex (offsetStart) đến currentCrossIndex (offsetEnd)
-        for i = offsetStart to offsetEnd
-            if histogram[i] > 0
-                extremePrice := math.max(extremePrice, high[i])
-            else
-                extremePrice := math.min(extremePrice, low[i])
+        int offsetStart = crossBarIndex - currentCrossIndex // Bắt đầu từ nến gần nhất của swing
+        int offsetEnd = crossBarIndex - lastCrossIndex // Kết thúc ở nến xa nhất của swing
 
-        // --- TÌM CHỈ MỤC (INDEX) CỦA ĐIỂM CỰC TRỊ ---
-        // Tìm thanh High nhất thực sự (giá trị cao nhất) trong khoảng đó.
-        // Sau khi có giá trị extremePrice, ta cần tìm chỉ mục của nó.
-        int extremBarIndex = lastCrossIndex // Khởi tạo với điểm bắt đầu
+        bool isBearSwing = histogram[offsetEnd] < 0
         
-        for i = offsetStart to offsetEnd
-            if (histogram[i] > 0 and high[i] == extremePrice) or (histogram[i] < 0 and low[i] == extremePrice)
-                extremBarIndex := bar_index - i
-                break // Lấy chỉ mục đầu tiên tìm thấy (từ phải sang trái)
-        
-        // --- VẼ ĐƯỜNG NỐI ---
-        // Điểm A: Điểm cao nhất của SWING TRƯỚC (extremBarIndex, extremePrice)
-        // Điểm B: Điểm cao nhất của SWING GẦN NHẤT (currentCrossIndex - 1, giá trị High của thanh đó) - Tạm thời, ta nối High nhất của Swing trước với High nhất của Swing liền kề.
-        
-        // *Chú ý: Để nối các swing với nhau, ta thường nối: 
-        // Peak (High) của Swing 1 -> Peak (High) của Swing 2.
-        // Ở đây, ta đã tìm được Peak/High của Swing 1 (giữa prev và last cross). 
-        // Điểm B (Bắt đầu của đường mới): Peak của Swing 1
-        // Điểm A (Kết thúc của đường mới): Peak của Swing 0 (Swing cũ nhất trong array)
-        
-        // Tái sử dụng điểm cao nhất đã tìm được ở lần trước
-        // Đây là Peak A (Peak của Swing Gần nhất)
+        extremePrice := isBearSwing ? 1e10 : -1e10
+
+        // Duyệt các offset từ gần tới xa (offEnd -> offStart)
+        for i = offsetEnd to offsetStart
+            if isBearSwing
+                // swing down -> tìm giá thấp nhất
+                if low[i] < extremePrice
+                    extremePrice := low[i]  
+                    extremeBarIndex := bar_index - i
+            else
+                // swing up -> tìm giá cao nhất
+                if high[i] > extremePrice
+                    extremePrice := high[i]
+                    extremeBarIndex := bar_index - i
+
+        float extremeBarYloc = isBearSwing ? low[bar_index - extremeBarIndex] - 5 : high[bar_index - extremeBarIndex] + 5
+        color extremeBarColor = isBearSwing ? color.red : color.green
+        string extremeBarStyle = isBearSwing ? label.style_label_up : label.style_label_down
+        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.black, size=size.small)
+       
+        // Lưu trữ điểm Peak A (điểm High/Low mới tìm được)
         float peak_A_price = extremePrice
-        int peak_A_index = extremBarIndex
+
+        // Lấy chỉ mục nến của Peak A
+        int peak_A_index = extremeBarIndex
         
         // --- VẼ ĐƯỜNG NỐI TỪ ĐIỂM CŨ ĐẾN ĐIỂM MỚI ---
         if not na(lastLine)
@@ -93,7 +107,7 @@ if isCross and barstate.isconfirmed
             
             // Vẽ đường mới nối Peak B (điểm cuối của đường cũ) với Peak A (điểm High mới tìm được)
             line.new(peak_B_index, peak_B_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=2, color=color.new(color.red, 0))
+                 xloc=xloc.bar_index, style=line.style_solid, width=3, color=color.new(color.blue, 0))
             
             // Cần cập nhật line.new() cuối cùng để lần sau lấy điểm cuối
             line.set_xy2(lastLine, peak_A_index, peak_A_price) 
@@ -101,7 +115,3 @@ if isCross and barstate.isconfirmed
             // Lần chạy đầu tiên, chỉ lưu Peak A để lần sau dùng làm Peak B
             lastLine := line.new(peak_A_index, peak_A_price, peak_A_index, peak_A_price, 
                  xloc=xloc.bar_index, style=line.style_solid, width=1, color=color.new(color.gray, 100)) // Đường ẩn
-
-// Đánh dấu các điểm cao nhất đã tìm thấy (tùy chọn)
-plotshape(line.get_x2(lastLine) == bar_index ? line.get_y2(lastLine) : na, 
-     style=shape.circle, location=location.absolute, color=color.red, size=size.tiny)
