@@ -1,10 +1,6 @@
 // @version=5
 indicator("MACD-based Market Structure Visualizer", overlay=true, max_bars_back = 500) // Tăng max_bars_back
 
-// --- INPUTS ---
-
-
-
 
 // Getting inputs
 histogramMinLen = input.int(title = "Histogram Min Length", minval=1, defval=2)
@@ -22,12 +18,33 @@ macd = fastMA - slowMA
 signal = sma_signal == "SMA" ? ta.sma(macd, signalLen) : ta.ema(macd, signalLen)
 histogram = macd - signal
 
+const int LINE_WIDTH = 2
+const int LABEL_GAP = 5
+
+
+// --- BOS, CHOCHH LOGIC ---
+var float lastExtremeHigh = na // Biến để lưu trữ giá cao nhất cuối cùng
+var float lastExtremeLow = na  // Biến để lưu trữ giá thấp nhất cuối cùng
+var int lastExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến của giá cao nhất cuối cùng
+var int lastExtremeLowBarIndex = na  // Biến để lưu trữ chỉ mục nến của giá thấp nhất cuối cùng
+var bool isLastBoS = false
+var bool isLastCHoCH = false
+
+if not na (lastExtremeHigh) and close >= lastExtremeHigh and isLastBoS == false
+    isLastBoS := true
+    line.new(lastExtremeHighBarIndex, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.green, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, lastExtremeHigh + LABEL_GAP, text="BoS", color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
+
+if not na (lastExtremeLow) and close <= lastExtremeLow and isLastBoS == false
+    isLastBoS := true
+    line.new(lastExtremeLowBarIndex, lastExtremeLow, bar_index, lastExtremeLow, color=color.red, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, lastExtremeLow - LABEL_GAP, text="BoS", color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
 // --- SWING/CROSS POINT LOGIC ---
+
 // Lưu trữ chỉ mục các nến xảy ra cắt nhau
 var int[] crossBarIndexs = array.new_int()
 var line lastLine = na // Biến để lưu trữ đối tượng đường kẻ cuối cùng
-
 
 // --- KIỂM TRA TÍN HIỆU CẮT NHAU ---
 // Phát hiện tại histogram trước đã đảo chiều (có xác nhận bởi nến đóng cửa), cây nến hiện tại là cấy nến của histogram thứ 2
@@ -39,7 +56,6 @@ for i = 1 to histogramMinLen - 1
 
 // Kiểm tra thanh histogram cuối cùng có cùng chiều với thanh hiện tại không
 isCross := isCross and histogram[histogramMinLen] * histogram[histogramMinLen + 1] > 0
-
 
 // --- XỬ LÝ KHI CÓ TÍN HIỆU CẮT NHAU ---
 if isCross
@@ -80,18 +96,25 @@ if isCross
             if isBearSwing
                 // swing down -> tìm giá thấp nhất
                 if low[i] < extremePrice
-                    extremePrice := low[i]  
+                    extremePrice := low[i]
                     extremeBarIndex := bar_index - i
+
+                    lastExtremeLow := extremePrice
+                    lastExtremeLowBarIndex := extremeBarIndex
             else
                 // swing up -> tìm giá cao nhất
                 if high[i] > extremePrice
                     extremePrice := high[i]
                     extremeBarIndex := bar_index - i
 
-        float extremeBarYloc = isBearSwing ? low[bar_index - extremeBarIndex] - 5 : high[bar_index - extremeBarIndex] + 5
+                    lastExtremeHigh := extremePrice
+                    lastExtremeHighBarIndex := extremeBarIndex
+                    isLastBoS := false // Reset BOS khi tìm được high mới
+
+        float extremeBarYloc = isBearSwing ? low[bar_index - extremeBarIndex] - LABEL_GAP : high[bar_index - extremeBarIndex] + LABEL_GAP
         color extremeBarColor = isBearSwing ? color.red : color.green
         string extremeBarStyle = isBearSwing ? label.style_label_up : label.style_label_down
-        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.black, size=size.small)
+        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.white, size=size.small)
        
         // Lưu trữ điểm Peak A (điểm High/Low mới tìm được)
         float peak_A_price = extremePrice
@@ -107,11 +130,11 @@ if isCross
             
             // Vẽ đường mới nối Peak B (điểm cuối của đường cũ) với Peak A (điểm High mới tìm được)
             line.new(peak_B_index, peak_B_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=3, color=color.new(color.blue, 0))
+                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH, color=color.new(color.blue, 0))
             
             // Cần cập nhật line.new() cuối cùng để lần sau lấy điểm cuối
             line.set_xy2(lastLine, peak_A_index, peak_A_price) 
         else
             // Lần chạy đầu tiên, chỉ lưu Peak A để lần sau dùng làm Peak B
             lastLine := line.new(peak_A_index, peak_A_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=1, color=color.new(color.gray, 100)) // Đường ẩn
+                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH, color=color.new(color.gray, 100)) // Đường ẩn
