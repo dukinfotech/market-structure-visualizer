@@ -37,8 +37,8 @@ var int prevUptrendExtremeLowBarIndex = na // Biến để lưu trữ chỉ mụ
 // Kiểm tra nếu giá đóng cửa vượt qua giá cao nhất cuối cùng
 if not na (lastExtremeHigh) and close >= lastExtremeHigh and isLastBoS == false
     isLastBoS := true
-    line.new(lastExtremeHighBarIndex, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.green, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, lastExtremeHigh + LABEL_GAP, text="BoS", color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
+    line.new(lastExtremeHighBarIndex, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.blue, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, lastExtremeHigh + LABEL_GAP, text="BoS", color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
 
     prevUptrendExtremeLow := low
     for i = 1 to bar_index - lastExtremeHighBarIndex
@@ -49,13 +49,13 @@ if not na (lastExtremeHigh) and close >= lastExtremeHigh and isLastBoS == false
 // Kiểm tra nếu giá đóng cửa vượt qua giá thấp nhất cuối cùng
 if not na (lastExtremeLow) and close <= lastExtremeLow and isLastBoS == false
     isLastBoS := true
-    line.new(lastExtremeLowBarIndex, lastExtremeLow, bar_index, lastExtremeLow, color=color.red, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, lastExtremeLow - LABEL_GAP, text="BoS", color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
+    line.new(lastExtremeLowBarIndex, lastExtremeLow, bar_index, lastExtremeLow, color=color.blue, style=line.style_dashed, width=LINE_WIDTH)
+    label.new(bar_index - LABEL_GAP, lastExtremeLow - LABEL_GAP, text="BoS", color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
     
     prevDowntrendExtremeHigh := high
     for i = 1 to bar_index - lastExtremeLowBarIndex
-        if low[i] < prevDowntrendExtremeHigh   
-            prevDowntrendExtremeHigh := low[i]
+        if high[i] < prevDowntrendExtremeHigh   
+            prevDowntrendExtremeHigh := high[i]
             prevDowntrendExtremeHighBarIndex := bar_index - i
 
 // --- CHoCH LOGIC ---
@@ -146,7 +146,7 @@ if isCross
         float extremeBarYloc = isBearSwing ? low[bar_index - extremeBarIndex] - LABEL_GAP : high[bar_index - extremeBarIndex] + LABEL_GAP
         color extremeBarColor = isBearSwing ? color.red : color.green
         string extremeBarStyle = isBearSwing ? label.style_label_up : label.style_label_down
-        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.white, size=size.small)
+        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.white, size=size.normal)
        
         // Lưu trữ điểm Peak A (điểm High/Low mới tìm được)
         float peak_A_price = extremePrice
@@ -162,7 +162,7 @@ if isCross
             
             // Vẽ đường mới nối Peak B (điểm cuối của đường cũ) với Peak A (điểm High mới tìm được)
             line.new(peak_B_index, peak_B_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH, color=color.new(color.blue, 0))
+                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH * 3, color=color.new(color.blue, 0))
             
             // Cần cập nhật line.new() cuối cùng để lần sau lấy điểm cuối
             line.set_xy2(lastLine, peak_A_index, peak_A_price) 
