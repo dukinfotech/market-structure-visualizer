@@ -8,165 +8,176 @@ fastLen = input(title = "Fast Length", defval = 12)
 slowLen = input(title = "Slow Length", defval = 26)
 src = input(title = "Source", defval = close, display = display.data_window)
 signalLen = input.int(title = "Signal Smoothing",  minval = 1, maxval = 50, defval = 9)
-sma_source = input.string(title = "Oscillator MA Type",  defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
-sma_signal = input.string(title = "Signal Line MA Type", defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
+smaSource = input.string(title = "Oscillator MA Type",  defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
+smaSignal = input.string(title = "Signal Line MA Type", defval = "EMA", options = ["SMA", "EMA"], display = display.data_window)
 
 // Calculating
-fastMA = sma_source == "SMA" ? ta.sma(src, fastLen) : ta.ema(src, fastLen)
-slowMA = sma_source == "SMA" ? ta.sma(src, slowLen) : ta.ema(src, slowLen)
+fastMA = smaSource == "SMA" ? ta.sma(src, fastLen) : ta.ema(src, fastLen)
+slowMA = smaSource == "SMA" ? ta.sma(src, slowLen) : ta.ema(src, slowLen)
 macd = fastMA - slowMA
-signal = sma_signal == "SMA" ? ta.sma(macd, signalLen) : ta.ema(macd, signalLen)
+signal = smaSignal == "SMA" ? ta.sma(macd, signalLen) : ta.ema(macd, signalLen)
 histogram = macd - signal
 
-const int LINE_WIDTH = 2
-const int LABEL_GAP = 0
+// -------------------- START VARIABLES -------------------
+// Market Structure variables
+var int[] reversalCandleStickIdxs = array.new_int() // Biến để lưu trữ chỉ mục các nến xảy ra cắt nhau
+var line marketStructureLine = na // Biến để lưu trữ đường vẽ cấu trúc thị trường
 
-
-// --- BOS, CHOCHH LOGIC ---
+// BoS & ChoCH variables
 var float lastExtremeHigh = na // Biến để lưu trữ đỉnh quan trọng cuối cùng
+var int lastExtremeHighIdx = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng
 var float lastExtremeLow = na  // Biến để lưu trữ đáy quan trọng cuối cùng
-var int lastExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng
-var int lastExtremeLowBarIndex = na  // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng
-var bool isLastBoS = false // Biến để theo dõi xem BoS đã xảy ra chưa
-var float prevDowntrendExtremeHigh = na // Biến để lưu trữ đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
-var float prevUptrendExtremeLow = na // Biến để lưu trữ đáy quan trọng cuối cùng của xu hướng tăng trước đó
-var int prevDowntrendExtremeHighBarIndex = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
-var int prevUptrendExtremeLowBarIndex = na // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng của xu hướng tăng trước đó
+var int lastExtremeLowIdx = na  // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng
+var bool hasBoS = false // Biến để theo dõi xem BoS đã xảy ra chưa
+var float lastBearishExtremHigh = na // Biến để lưu trữ đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
+var float lastBullishExtremeLow = na // Biến để lưu trữ đáy quan trọng cuối cùng của xu hướng tăng trước đó
+var int lastBearishExtremHighIdx = na // Biến để lưu trữ chỉ mục nến có đỉnh quan trọng cuối cùng của xu hướng giảm trước đó
+var int prevBullishExtremeLowIdx = na // Biến để lưu trữ chỉ mục nến có đáy quan trọng cuối cùng của xu hướng tăng trước đó
+// -------------------- END VARIABLES -------------------
 
+
+// Hàm kiểm tra xem có tín hiệu cắt nhau được xác nhận không dựa trên quy tắc số lượng thanh histogram mỗi con sóng
+isConfirmedReversalMarket() =>
+    bool isConfirmed = barstate.isconfirmed
+
+    for i = 0 to histogramMinLen * 2 - 2
+        if i != (histogramMinLen - 1)
+            if histogram[i] * histogram[i + 1] > 0
+                isConfirmed := isConfirmed and true
+            else
+                isConfirmed := isConfirmed and false
+        else
+            if histogram[i] * histogram[i + 1] < 0
+                isConfirmed := isConfirmed and true
+            else
+                isConfirmed := isConfirmed and false
+        
+    isConfirmed
+
+// Hàm lấy đỉnh/đáy của swing bất kỳ
+getSwingExtremeCandleSticks(startReversalCandleStickIdx, endReversalCandleStickIdx) =>
+    float swingExtremePrice = 0
+    int swingExtremeIdx = 0
+
+    int offsetStart = 0 // Bắt đầu từ nến gần nhất của swing
+    int offsetEnd = endReversalCandleStickIdx - startReversalCandleStickIdx // Kết thúc tại nến xa nhất của swing
+
+    bool isBearSwing = histogram[offsetEnd] < 0
+
+    // Duyệt các offset từ gần tới xa (offStart -> offEnd)
+    for i = offsetStart to offsetEnd
+        if isBearSwing
+            if low[i] < swingExtremePrice or swingExtremePrice == 0
+                swingExtremePrice := low[i]
+                swingExtremeIdx := (endReversalCandleStickIdx + 2) - i
+        else
+            if high[i] > swingExtremePrice or swingExtremePrice == 0
+                swingExtremePrice := high[i]
+                swingExtremeIdx := (endReversalCandleStickIdx + 2) - i
+
+    [swingExtremeIdx, swingExtremePrice]
+
+
+// -------------------- MAIN FUNCTION --------------------
+// -------------------- START DRAW MARKET STRUCTURE --------------------
+// Gọi hàm main mỗi khi có nến mới
+bool isConfirmedReversalMarket = isConfirmedReversalMarket()
+// Khi có tín hiệu cắt được xác nhận dựa trên quy tắc số lượng thanh histogram mỗi con sóng
+if isConfirmedReversalMarket
+
+    // Chỉ mục của cây nến xảy ra tín hiệu cắt
+    int reversalCandleStickIdx = bar_index - histogramMinLen
+    
+    // Lưu chỉ mục nến xảy ra tín hiệu cắt vào mảng
+    array.push(reversalCandleStickIdxs, reversalCandleStickIdx)
+    
+    // Lấy kích thước mảng chỉ mục nến xảy ra tín hiệu cắt
+    reversalCandleStickSize = array.size(reversalCandleStickIdxs)
+
+    // Chỉ tính toán giá cao nhất, thấp nhất và vẽ khi có ít nhất 2 điểm cắt trở lên (trong đó có 1 swing hoàn chỉnh)
+    if reversalCandleStickSize >= 2
+        // Lấy chỉ mục nến của điểm cắt hiện tại và điểm cắt trước đó
+        int currentReversalCandleStickIdx = array.get(reversalCandleStickIdxs, reversalCandleStickSize - 1)
+        int lastReversalCandleStickIdx = array.get(reversalCandleStickIdxs, reversalCandleStickSize - 2)
+
+        // Lấy đỉnh/đáy của swing vừa hoàn thành
+        [swingExtremeIdx, swingExtremePrice] = getSwingExtremeCandleSticks(lastReversalCandleStickIdx, currentReversalCandleStickIdx)
+
+        // Vẽ đỉnh/đáy swing lên biểu đồ
+        bool isBearSwing = histogram[histogramMinLen] < 0
+        color labelColor = isBearSwing ? color.red : color.green
+        string labelStyle = isBearSwing ? label.style_label_up : label.style_label_down
+        label.new(swingExtremeIdx, swingExtremePrice, text=str.tostring(swingExtremePrice), color=labelColor, style=labelStyle, textcolor=color.white, size=size.normal)
+
+        if isBearSwing
+            lastExtremeLow := swingExtremePrice
+            lastExtremeLowIdx := swingExtremeIdx
+        else
+            lastExtremeHigh := swingExtremePrice
+            lastExtremeHighIdx := swingExtremeIdx
+
+        hasBoS := false // Reset biến BoS khi tìm được đỉnh mới
+
+
+        // Lưu trữ điểm Peak A (điểm High/Low mới tìm được)
+        float peak_A_price = swingExtremePrice
+
+        // Lấy chỉ mục nến của Peak A
+        int peak_A_index = swingExtremeIdx
+        
+        // Vẽ đường nối các đỉnh/đáy swing
+        if not na(marketStructureLine)
+            // Lấy tọa độ cuối cùng của đường cũ (Peak B)
+            int peak_B_index = line.get_x2(marketStructureLine)
+            float peak_B_price = line.get_y2(marketStructureLine)
+
+            // Vẽ đường mới nối Peak B (điểm cuối của đường cũ) với Peak A (điểm High mới tìm được)
+            line.new(peak_B_index, peak_B_price, peak_A_index, peak_A_price, xloc=xloc.bar_index, style=line.style_solid, width=3, color=color.new(color.blue, 0))
+            
+            // Cần cập nhật line.new() cuối cùng để lần sau lấy điểm cuối
+            line.set_xy2(marketStructureLine, peak_A_index, peak_A_price) 
+        else
+            // Lần chạy đầu tiên, chỉ lưu Peak A để lần sau dùng làm Peak B
+            marketStructureLine := line.new(peak_A_index, peak_A_price, peak_A_index, peak_A_price, xloc=xloc.bar_index, style=line.style_solid, width=3, color=color.new(color.gray, 100))
+// -------------------- END DRAW MARKET STRUCTURE --------------------
+
+// -------------------- START DRAW BOS & CHoCH --------------------
 // --- BOS LOGIC ---
 // Kiểm tra nếu giá đóng cửa vượt qua giá cao nhất cuối cùng
-if not na (lastExtremeHigh) and close >= lastExtremeHigh and isLastBoS == false
-    isLastBoS := true
-    line.new(lastExtremeHighBarIndex, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.blue, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, lastExtremeHigh + LABEL_GAP, text="BoS", color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
+if not na (lastExtremeHigh) and close >= lastExtremeHigh and hasBoS == false
+    hasBoS := true
+    line.new(lastExtremeHighIdx, lastExtremeHigh, bar_index, lastExtremeHigh, color=color.blue, style=line.style_dashed, width=2)
+    label.new(bar_index, lastExtremeHigh, text="BoS", color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
 
-    prevUptrendExtremeLow := low
-    for i = 1 to bar_index - lastExtremeHighBarIndex
-        if low[i] < prevUptrendExtremeLow   
-            prevUptrendExtremeLow := low[i]
-            prevUptrendExtremeLowBarIndex := bar_index - i
+    lastBullishExtremeLow := low
+    for i = 1 to bar_index - lastExtremeHighIdx
+        if low[i] < lastBullishExtremeLow   
+            lastBullishExtremeLow := low[i]
+            prevBullishExtremeLowIdx := bar_index - i
     
 // Kiểm tra nếu giá đóng cửa vượt qua giá thấp nhất cuối cùng
-if not na (lastExtremeLow) and close <= lastExtremeLow and isLastBoS == false
-    isLastBoS := true
-    line.new(lastExtremeLowBarIndex, lastExtremeLow, bar_index, lastExtremeLow, color=color.blue, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, lastExtremeLow - LABEL_GAP, text="BoS", color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
+if not na (lastExtremeLow) and close <= lastExtremeLow and hasBoS == false
+    hasBoS := true
+    line.new(lastExtremeLowIdx, lastExtremeLow, bar_index, lastExtremeLow, color=color.blue, style=line.style_dashed, width=2)
+    label.new(bar_index, lastExtremeLow, text="BoS", color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
     
-    prevDowntrendExtremeHigh := high
-    for i = 1 to bar_index - lastExtremeLowBarIndex
-        if high[i] < prevDowntrendExtremeHigh   
-            prevDowntrendExtremeHigh := high[i]
-            prevDowntrendExtremeHighBarIndex := bar_index - i
+    lastBearishExtremHigh := high
+    for i = 1 to bar_index - lastExtremeLowIdx
+        if high[i] < lastBearishExtremHigh   
+            lastBearishExtremHigh := high[i]
+            lastBearishExtremHighIdx := bar_index - i
 
 // --- CHoCH LOGIC ---
 // Kiểm tra nếu giá đóng cửa vượt qua giá thấp nhất của xu hướng tăng trước đó
-if not na (prevUptrendExtremeLow) and close <= prevUptrendExtremeLow
-    line.new(prevUptrendExtremeLowBarIndex, prevUptrendExtremeLow, bar_index, prevUptrendExtremeLow, color=color.orange, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, prevUptrendExtremeLow - LABEL_GAP, text="CHoCH", color=color.orange, style=label.style_label_up, textcolor=color.white, size=size.small)
-    prevUptrendExtremeLow := na // Reset sau khi đã đánh dấu ChoCH
+if not na (lastBullishExtremeLow) and close <= lastBullishExtremeLow
+    line.new(prevBullishExtremeLowIdx, lastBullishExtremeLow, bar_index, lastBullishExtremeLow, color=color.orange, style=line.style_dashed, width=2)
+    label.new(bar_index, lastBullishExtremeLow, text="CHoCH", color=color.orange, style=label.style_label_up, textcolor=color.white, size=size.small)
+    lastBullishExtremeLow := na // Reset sau khi đã đánh dấu ChoCH
 
 // Kiểm tra nếu giá đóng cửa vượt qua giá cao nhất của xu hướng giảm trước đó
-if not na (prevDowntrendExtremeHigh) and close >= prevDowntrendExtremeHigh
-    line.new(prevDowntrendExtremeHighBarIndex, prevDowntrendExtremeHigh, bar_index, prevDowntrendExtremeHigh, color=color.orange, style=line.style_dashed, width=LINE_WIDTH)
-    label.new(bar_index - LABEL_GAP, prevDowntrendExtremeHigh + LABEL_GAP, text="CHoCH", color=color.orange, style=label.style_label_down, textcolor=color.white, size=size.small)
-    prevDowntrendExtremeHigh := na // Reset sau khi đã đánh dấu ChoCH
+if not na (lastBearishExtremHigh) and close >= lastBearishExtremHigh
+    line.new(lastBearishExtremHighIdx, lastBearishExtremHigh, bar_index, lastBearishExtremHigh, color=color.orange, style=line.style_dashed, width=2)
+    label.new(bar_index, lastBearishExtremHigh, text="CHoCH", color=color.orange, style=label.style_label_down, textcolor=color.white, size=size.small)
+    lastBearishExtremHigh := na // Reset sau khi đã đánh dấu ChoCH
 
-
-// --- SWING/CROSS POINT LOGIC ---
-
-// Lưu trữ chỉ mục các nến xảy ra cắt nhau
-var int[] crossBarIndexs = array.new_int()
-var line lastLine = na // Biến để lưu trữ đối tượng đường kẻ cuối cùng
-
-// --- KIỂM TRA TÍN HIỆU CẮT NHAU ---
-// Phát hiện tại histogram trước đã đảo chiều (có xác nhận bởi nến đóng cửa), cây nến hiện tại là cấy nến của histogram thứ 2
-bool isCross = histogram * histogram[1] > 0 and barstate.isconfirmed
-
-// Kiểm tra các thanh histogram trung gian có đổi chiều không
-for i = 1 to histogramMinLen - 1
-    isCross := isCross and histogram[i] * histogram[i + 1] < 0
-
-// Kiểm tra thanh histogram cuối cùng có cùng chiều với thanh hiện tại không
-isCross := isCross and histogram[histogramMinLen] * histogram[histogramMinLen + 1] > 0
-
-// --- XỬ LÝ KHI CÓ TÍN HIỆU CẮT NHAU ---
-if isCross
-    int crossBarIndex = bar_index - 1 // Chỉ mục thanh trước (thanh xảy ra tín hiệu cắt)
-    
-    // 1. Lưu chỉ mục của cây nến hiện tại khi có tín hiệu cắt
-    array.push(crossBarIndexs, crossBarIndex)
-    
-    crossBarSize = array.size(crossBarIndexs)
-
-    // 2. Chỉ tính toán và vẽ khi có ít nhất 2 điểm cắt (cần 2 chỉ mục: current, last)
-    if crossBarSize >= 2
-        // Lấy 2 chỉ mục của 2 cây nến xảy ra tín hiệu cắt gần nhất:
-        int currentCrossIndex = array.get(crossBarIndexs, crossBarSize - 1)
-        int lastCrossIndex    = array.get(crossBarIndexs, crossBarSize - 2)
-
-        // --- TÌM ĐIỂM CỰC TRỊ TRONG SWING TRƯỚC ---
-        // Tìm giá cực trị giữa lastCrossIndex và currentCrossIndex.
-        
-        // Khởi tạo giá trị cao nhất
-        float extremePrice = -1000000.0
-        int extremeBarIndex = 0
-        
-        // Vòng lặp để tìm giá cao nhất/thấp nhất TỪ lastCrossIndex ĐẾN currentCrossIndex
-        // Index trong Pine Script được tham chiếu bằng [offset]
-        // Offset cho lastCrossIndex là bar_index - lastCrossIndex
-        // Offset cho currentCrossIndex là bar_index - currentCrossIndex
-
-        int offsetStart = crossBarIndex - currentCrossIndex // Bắt đầu từ nến gần nhất của swing
-        int offsetEnd = crossBarIndex - lastCrossIndex // Kết thúc ở nến xa nhất của swing
-
-        bool isBearSwing = histogram[offsetEnd] < 0
-        
-        extremePrice := isBearSwing ? 1e10 : -1e10
-
-        // Duyệt các offset từ gần tới xa (offEnd -> offStart)
-        for i = offsetEnd to offsetStart
-            if isBearSwing
-                // swing down -> tìm giá thấp nhất
-                if low[i] < extremePrice
-                    extremePrice := low[i]
-                    extremeBarIndex := bar_index - i
-                    
-                    lastExtremeLow := extremePrice
-                    lastExtremeLowBarIndex := extremeBarIndex
-            else
-                // swing up -> tìm giá cao nhất
-                if high[i] > extremePrice
-                    extremePrice := high[i]
-                    extremeBarIndex := bar_index - i
-
-                    lastExtremeHigh := extremePrice
-                    lastExtremeHighBarIndex := extremeBarIndex
-                    isLastBoS := false // Reset BOS khi tìm được high mới
-
-        float extremeBarYloc = isBearSwing ? low[bar_index - extremeBarIndex] - LABEL_GAP : high[bar_index - extremeBarIndex] + LABEL_GAP
-        color extremeBarColor = isBearSwing ? color.red : color.green
-        string extremeBarStyle = isBearSwing ? label.style_label_up : label.style_label_down
-        label.new(extremeBarIndex, extremeBarYloc, text=str.tostring(extremePrice), color=extremeBarColor, style=extremeBarStyle, textcolor=color.white, size=size.normal)
-       
-        // Lưu trữ điểm Peak A (điểm High/Low mới tìm được)
-        float peak_A_price = extremePrice
-
-        // Lấy chỉ mục nến của Peak A
-        int peak_A_index = extremeBarIndex
-        
-        // --- VẼ ĐƯỜNG NỐI TỪ ĐIỂM CŨ ĐẾN ĐIỂM MỚI ---
-        if not na(lastLine)
-            // Lấy tọa độ cuối cùng của đường cũ (Peak B)
-            int peak_B_index = line.get_x2(lastLine)
-            float peak_B_price = line.get_y2(lastLine)
-            
-            // Vẽ đường mới nối Peak B (điểm cuối của đường cũ) với Peak A (điểm High mới tìm được)
-            line.new(peak_B_index, peak_B_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH * 3, color=color.new(color.blue, 0))
-            
-            // Cần cập nhật line.new() cuối cùng để lần sau lấy điểm cuối
-            line.set_xy2(lastLine, peak_A_index, peak_A_price) 
-        else
-            // Lần chạy đầu tiên, chỉ lưu Peak A để lần sau dùng làm Peak B
-            lastLine := line.new(peak_A_index, peak_A_price, peak_A_index, peak_A_price, 
-                 xloc=xloc.bar_index, style=line.style_solid, width=LINE_WIDTH, color=color.new(color.gray, 100)) // Đường ẩn
+// -------------------- END DRAW BOS & CHoCH --------------------
