@@ -9,10 +9,8 @@ lengthLeft = input.int(5, "Số nến bên trái Pivot", minval=1, group=grp_set
 lengthRight = input.int(5, "Số nến bên phải Pivot", minval=1, group=grp_settings)
 
 grp_visual = "Cài đặt Hiển thị"
-colorUp = input.color(color.green, "Màu Xu hướng Tăng", group=grp_visual)
-colorDown = input.color(color.red, "Màu Xu hướng Giảm", group=grp_visual)
-lineWidth = input.int(2, "Độ dày đường ZigZag", minval=1, group=grp_visual)
 showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
+// Color Up/Down và LineWidth đã được fix cứng theo yêu cầu, không cần input
 
 grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
 showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
@@ -34,19 +32,18 @@ var int lastHighIndex = na
 var int lastLowIndex = na
 
 // Mảng lưu trữ các điểm swing để phân tích cấu trúc thị trường
-// Chúng ta cần lưu lịch sử để xác định sự phá vỡ cấu trúc (Break of Structure)
 var float[] swingHighs = array.new_float()
 var int[] swingHighIndices = array.new_int()
 var float[] swingLows = array.new_float()
 var int[] swingLowIndices = array.new_int()
 
-// Biến lưu đường ZigZag hiện tại đang vẽ
+// Biến lưu đường ZigZag hiện tại và Label hiện tại
 var line zigzagLine = na
+var label currentLabel = na 
 
 // -----------------------------------------------------------------------------
 // TÍNH TOÁN PIVOT (ĐỈNH/ĐÁY)
 // -----------------------------------------------------------------------------
-// Tìm điểm Pivot High và Pivot Low dựa trên số nến trái/phải
 ph = ta.pivothigh(high, lengthLeft, lengthRight)
 pl = ta.pivotlow(low, lengthLeft, lengthRight)
 
@@ -61,31 +58,32 @@ if not na(ph)
         lastHigh := ph
         lastHighIndex := bar_index - lengthRight
         if showZigZag
-            zigzagLine := line.new(bar_index - lengthRight, ph, bar_index - lengthRight, ph, color=colorUp, width=lineWidth)
+            zigzagLine := line.new(bar_index - lengthRight, ph, bar_index - lengthRight, ph, color=color.blue, width=2)
+            currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
     // Nếu đang trong xu hướng tăng (đang tìm đỉnh)
     else if direction == 1 
-        // Nếu đỉnh mới này cao hơn đỉnh "tạm thời" trước đó trong cùng con sóng tăng
-        // Cập nhật lại đỉnh cao nhất của sóng hiện tại
+        // Nếu đỉnh mới này cao hơn đỉnh "tạm thời" trước đó
         if ph > lastHigh
             lastHigh := ph
             lastHighIndex := bar_index - lengthRight
             if showZigZag
                 line.set_xy2(zigzagLine, lastHighIndex, lastHigh)
+                label.set_xy(currentLabel, lastHighIndex, lastHigh)
+                label.set_text(currentLabel, str.tostring(lastHigh, format.mintick))
                 
-    // Nếu đang trong xu hướng giảm (đang tìm đáy) -> Tìm thấy Đỉnh nghĩa là đảo chiều sang Tăng
+    // Nếu đang trong xu hướng giảm (đang tìm đáy) -> Đảo chiều sang Tăng
     else 
         direction := 1
         lastHigh := ph
         lastHighIndex := bar_index - lengthRight
         
-        // Lưu đỉnh vừa xác nhận vào mảng
         array.push(swingHighs, lastHigh)
         array.push(swingHighIndices, lastHighIndex)
 
-        // Vẽ đường nối từ Đáy cũ lên Đỉnh mới vừa tìm thấy
         if showZigZag
-            zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, lastHigh, color=colorUp, width=lineWidth)
+            zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, lastHigh, color=color.blue, width=2)
+            currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
 // Khi tìm thấy một Pivot Low (Đáy) mới
 if not na(pl)
@@ -95,44 +93,42 @@ if not na(pl)
         lastLow := pl
         lastLowIndex := bar_index - lengthRight
         if showZigZag
-            zigzagLine := line.new(bar_index - lengthRight, pl, bar_index - lengthRight, pl, color=colorDown, width=lineWidth)
+            zigzagLine := line.new(bar_index - lengthRight, pl, bar_index - lengthRight, pl, color=color.blue, width=2)
+            currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
     // Nếu đang trong xu hướng giảm (đang tìm đáy)
     else if direction == -1 
-        // Nếu đáy mới thấp hơn đáy "tạm thời", cập nhật lại đáy thấp nhất
+        // Nếu đáy mới thấp hơn đáy "tạm thời"
         if pl < lastLow 
             lastLow := pl
             lastLowIndex := bar_index - lengthRight
             if showZigZag
                 line.set_xy2(zigzagLine, lastLowIndex, lastLow)
+                label.set_xy(currentLabel, lastLowIndex, lastLow)
+                label.set_text(currentLabel, str.tostring(lastLow, format.mintick))
     
-    // Nếu đang trong xu hướng tăng -> Tìm thấy Đáy nghĩa là đảo chiều sang Giảm
+    // Nếu đang trong xu hướng tăng -> Đảo chiều sang Giảm
     else 
         direction := -1
         lastLow := pl
         lastLowIndex := bar_index - lengthRight
         
-        // Lưu đáy vừa xác nhận vào mảng
         array.push(swingLows, lastLow)
         array.push(swingLowIndices, lastLowIndex)
 
-        // Vẽ đường nối từ Đỉnh cũ xuống Đáy mới
         if showZigZag
-            zigzagLine := line.new(lastHighIndex, lastHigh, lastLowIndex, lastLow, color=colorDown, width=lineWidth)
+            zigzagLine := line.new(lastHighIndex, lastHigh, lastLowIndex, lastLow, color=color.blue, width=2)
+            currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
 // -----------------------------------------------------------------------------
 // XÁC ĐỊNH BOS VÀ CHOCH (PHÁ VỠ CẤU TRÚC)
 // -----------------------------------------------------------------------------
-// Kiểm tra sự phá vỡ cấu trúc trên mỗi thanh nến
-// Sử dụng các điểm Swing High/Low đã HOÀN THÀNH gần nhất để so sánh
-
 var bool bosUpDetected = false
 var bool bosDownDetected = false
 var int lastBrokenHighIndex = 0
 var int lastBrokenLowIndex = 0
 
 if array.size(swingHighs) > 0 and array.size(swingLows) > 0
-    // Lấy Đỉnh và Đáy hoàn thành gần nhất
     float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
     int prevHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
     
@@ -140,19 +136,13 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
     int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
 
     // --- XU HƯỚNG TĂNG (BULLISH BREAK) ---
-    // Điều kiện: Giá đóng cửa vượt qua Đỉnh cũ gần nhất
-    // Kiểm tra xem Đỉnh này đã bị đánh dấu phá vỡ chưa (để tránh vẽ lại nhiều lần)
-    
     bool isBullCase = close > prevHigh
     bool isBearCase = close < prevLow
     
-    // Xử lý phá vỡ Đỉnh (BOS Tăng hoặc CHOCH Tăng)
     if isBullCase and prevHighIdx != lastBrokenHighIndex
         string txt = "BOS"
         color col = colorBOS
         
-        // Logic xác định CHOCH:
-        // Nếu Đỉnh cũ thấp hơn Đỉnh trước đó nữa -> Tức là trước đó đang cấu trúc giảm (LH) -> Phá vỡ này là Đảo chiều (CHOCH)
         if array.size(swingHighs) > 1
             float prevPrevHigh = array.get(swingHighs, array.size(swingHighs)-2)
             if prevHigh < prevPrevHigh
@@ -160,19 +150,16 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
                 col := colorCHOCH
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Vẽ đường phá vỡ Nét liền (Solid) vì đóng cửa nến đã vượt qua
             line.new(prevHighIdx, prevHigh, bar_index, prevHigh, color=col, style=line.style_solid, width=1)
             label.new(bar_index, prevHigh, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=col, size=lblSize)
             
             lastBrokenHighIndex := prevHighIdx
 
-    // Xử lý phá vỡ Đáy (BOS Giảm hoặc CHOCH Giảm)
+    // --- XU HƯỚNG GIẢM (BEARISH BREAK) ---
     if isBearCase and prevLowIdx != lastBrokenLowIndex
         string txt = "BOS"
         color col = colorBOS
         
-        // Logic xác định CHOCH:
-        // Nếu Đáy cũ cao hơn Đáy trước đó nữa -> Tức là trước đó đang cấu trúc tăng (HL) -> Phá vỡ này là Đảo chiều (CHOCH)
         if array.size(swingLows) > 1
             float prevPrevLow = array.get(swingLows, array.size(swingLows)-2)
             if prevLow > prevPrevLow
@@ -180,50 +167,42 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
                 col := colorCHOCH
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Vẽ đường phá vỡ Nét liền (Solid)
             line.new(prevLowIdx, prevLow, bar_index, prevLow, color=col, style=line.style_solid, width=1)
             label.new(bar_index, prevLow, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=col, size=lblSize)
             
             lastBrokenLowIndex := prevLowIdx
 
 // -----------------------------------------------------------------------------
-// PHÁT HIỆN PHÁ VỠ BẰNG RÂU NẾN (WICK BREAK) - "WEAK BREAK"
+// PHÁT HIỆN PHÁ VỠ BẰNG RÂU NẾN (WICK BREAK)
 // -----------------------------------------------------------------------------
-// Yêu cầu: Nếu giá chỉ phá qua bằng râu (High/Low) nhưng đóng cửa vẫn nằm trong phạm vi -> Vẽ nét đứt (Dashed)
-
 if array.size(swingHighs) > 0
     float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
     int prevHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
 
-    // Nếu High vượt qua Đỉnh cũ NHƯNG Close vẫn thấp hơn hoặc bằng (chưa phá hẳn) VÀ chưa bị đánh dấu phá vỡ
+    // Wick Break Up
     if high > prevHigh and close <= prevHigh and prevHighIdx != lastBrokenHighIndex
         string txt = "BOS"
         color col = colorBOS
-        
         if array.size(swingHighs) > 1
             if prevHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
                 col := colorCHOCH
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Vẽ đường nét đứt (Dashed)
             line.new(prevHighIdx, prevHigh, bar_index, prevHigh, color=col, style=line.style_dashed, width=1)
-            // Lưu ý: Không cập nhật lastBrokenHighIndex ở đây
 
 if array.size(swingLows) > 0
     float prevLow = array.get(swingLows, array.size(swingLows)-1)
     int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
 
-    // Nếu Low thấp hơn Đáy cũ NHƯNG Close vẫn cao hơn hoặc bằng
+    // Wick Break Down
     if low < prevLow and close >= prevLow and prevLowIdx != lastBrokenLowIndex
         string txt = "BOS"
         color col = colorBOS
-        
         if array.size(swingLows) > 1
             if prevLow > array.get(swingLows, array.size(swingLows)-2)
                 txt := "CHOCH"
                 col := colorCHOCH
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Vẽ đường nét đứt (Dashed)
             line.new(prevLowIdx, prevLow, bar_index, prevLow, color=col, style=line.style_dashed, width=1)
