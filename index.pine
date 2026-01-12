@@ -14,8 +14,6 @@ showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
 grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
 showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
 showCHOCH = input.bool(true, "Hiển thị CHOCH", group=grp_structure)
-colorBOS = input.color(color.blue, "Màu BOS", group=grp_structure)
-colorCHOCH = input.color(color.orange, "Màu CHOCH", group=grp_structure)
 lblSize = input.string(size.small, "Kích thước Nhãn", options=[size.tiny, size.small, size.normal, size.large], group=grp_structure)
 
 // -----------------------------------------------------------------------------
@@ -24,9 +22,10 @@ lblSize = input.string(size.small, "Kích thước Nhãn", options=[size.tiny, s
 var int direction = 0 
 var float lastHigh = na
 var float lastLow = na
-var int lastHighIndex = na // Trở lại dùng Index
+var int lastHighIndex = na 
 var int lastLowIndex = na
 
+// Arrays to store history of completed swings
 var float[] swingHighs = array.new_float()
 var int[] swingHighIndices = array.new_int()
 var float[] swingLows = array.new_float()
@@ -36,15 +35,11 @@ var line zigzagLine = na
 var label currentLabel = na 
 
 // -----------------------------------------------------------------------------
-// TÍNH TOÁN PIVOT
+// LOGIC: ZIGZAG
 // -----------------------------------------------------------------------------
 ph = ta.pivothigh(high, lengthLeft, lengthRight)
 pl = ta.pivotlow(low, lengthLeft, lengthRight)
 
-// -----------------------------------------------------------------------------
-// LOGIC: ZIGZAG (DÙNG BAR_INDEX ĐỂ CHÍNH XÁC VỚI NẾN)
-// -----------------------------------------------------------------------------
-// Pivot Index: bar_index hiện tại trừ đi độ trễ (lengthRight)
 pivotIndex = bar_index - lengthRight
 
 if not na(ph)
@@ -57,6 +52,7 @@ if not na(ph)
             currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
     else if direction == 1 
+        // Making Higher High?
         if ph > lastHigh
             lastHigh := ph
             lastHighIndex := pivotIndex
@@ -66,6 +62,7 @@ if not na(ph)
                 label.set_text(currentLabel, str.tostring(lastHigh, format.mintick))
                 
     else 
+        // Switch to Uptrend
         direction := 1
         lastHigh := ph
         lastHighIndex := pivotIndex
@@ -87,6 +84,7 @@ if not na(pl)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
     else if direction == -1 
+        // Making Lower Low?
         if pl < lastLow 
             lastLow := pl
             lastLowIndex := pivotIndex
@@ -96,6 +94,7 @@ if not na(pl)
                 label.set_text(currentLabel, str.tostring(lastLow, format.mintick))
     
     else 
+        // Switch to Downtrend
         direction := -1
         lastLow := pl
         lastLowIndex := pivotIndex
@@ -108,91 +107,55 @@ if not na(pl)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
 // -----------------------------------------------------------------------------
-// BOS / CHOCH
+// BOS / CHOCH DETECTION
 // -----------------------------------------------------------------------------
-var bool bosUpDetected = false
-var bool bosDownDetected = false
-var int lastBrokenHighIndex = 0
-var int lastBrokenLowIndex = 0
+// Chỉ hiển thị khi giá đóng cửa phá vỡ lastHighIndex hoặc lastLowIndex (trong mảng swing)
 
-// Current Bar Index
+var int lastBrokenHighIdx = 0
+var int lastBrokenLowIdx = 0
+
+// Current Bar Close
+currentClose = close
 currentIndex = bar_index
 
-if array.size(swingHighs) > 0 and array.size(swingLows) > 0
-    float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
-    int prevHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
-    
-    float prevLow = array.get(swingLows, array.size(swingLows)-1)
-    int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
-
-    // --- BULLISH BREAK ---
-    bool isBullCase = close > prevHigh
-    bool isBearCase = close < prevLow
-    
-    // Check BOS
-    if isBullCase and prevHighIdx != lastBrokenHighIndex
-        string txt = "BOS"
-        color col = colorBOS
-        
-        if array.size(swingHighs) > 1
-            float prevPrevHigh = array.get(swingHighs, array.size(swingHighs)-2)
-            if prevHigh < prevPrevHigh
-                txt := "CHOCH"
-                col := colorCHOCH
-        
-        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Vẽ đường ngang BOS/CHOCH
-            line.new(prevHighIdx, prevHigh, currentIndex, prevHigh, color=col, style=line.style_solid, width=1)
-            label.new(currentIndex, prevHigh, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=col, size=lblSize)
-            
-            lastBrokenHighIndex := prevHighIdx
-
-    // --- BEARISH BREAK ---
-    if isBearCase and prevLowIdx != lastBrokenLowIndex
-        string txt = "BOS"
-        color col = colorBOS
-        
-        if array.size(swingLows) > 1
-            float prevPrevLow = array.get(swingLows, array.size(swingLows)-2)
-            if prevLow > prevPrevLow
-                txt := "CHOCH"
-                col := colorCHOCH
-
-        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevLowIdx, prevLow, currentIndex, prevLow, color=col, style=line.style_solid, width=1)
-            label.new(currentIndex, prevLow, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=col, size=lblSize)
-            
-            lastBrokenLowIndex := prevLowIdx
-
-// -----------------------------------------------------------------------------
-// WICK BREAK (WEAK BREAK)
-// -----------------------------------------------------------------------------
+// Check Break of Structure High
 if array.size(swingHighs) > 0
-    float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
-    int prevHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
+    // Get the Last Confirmed Swing High from history
+    float targetHigh = array.get(swingHighs, array.size(swingHighs)-1)
+    int targetHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
 
-    if high > prevHigh and close <= prevHigh and prevHighIdx != lastBrokenHighIndex
+    // CHECK: Close price breaks the targetHigh AND we haven't marked this specific high as broken yet
+    if currentClose > targetHigh and targetHighIdx != lastBrokenHighIdx
         string txt = "BOS"
-        color col = colorBOS
+        // Determine BOS vs CHOCH
         if array.size(swingHighs) > 1
-            if prevHigh < array.get(swingHighs, array.size(swingHighs)-2)
+             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
-                col := colorCHOCH
-
-        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevHighIdx, prevHigh, currentIndex, prevHigh, color=col, style=line.style_dashed, width=1)
-
-if array.size(swingLows) > 0
-    float prevLow = array.get(swingLows, array.size(swingLows)-1)
-    int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
-
-    if low < prevLow and close >= prevLow and prevLowIdx != lastBrokenLowIndex
-        string txt = "BOS"
-        color col = colorBOS
-        if array.size(swingLows) > 1
-            if prevLow > array.get(swingLows, array.size(swingLows)-2)
-                txt := "CHOCH"
-                col := colorCHOCH
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevLowIdx, prevLow, currentIndex, prevLow, color=col, style=line.style_dashed, width=1)
+            // Color Green (Bullish Break)
+            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=color.green, style=line.style_solid, width=1)
+            label.new(currentIndex, targetHigh, txt, color=color.green, style=label.style_label_down, textcolor=color.white, size=lblSize)
+            
+            // Mark as broken so we don't draw multiple times for the same swing
+            lastBrokenHighIdx := targetHighIdx
+
+// Check Break of Structure Low
+if array.size(swingLows) > 0
+    // Get the Last Confirmed Swing Low from history
+    float targetLow = array.get(swingLows, array.size(swingLows)-1)
+    int targetLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
+
+    // CHECK: Close price breaks the targetLow AND we haven't marked this specific low as broken yet
+    if currentClose < targetLow and targetLowIdx != lastBrokenLowIdx
+        string txt = "BOS"
+        if array.size(swingLows) > 1
+            if targetLow > array.get(swingLows, array.size(swingLows)-2)
+                txt := "CHOCH"
+
+        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
+            // Color Red (Bearish Break)
+            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=color.red, style=line.style_solid, width=1)
+            label.new(currentIndex, targetLow, txt, color=color.red, style=label.style_label_up, textcolor=color.white, size=lblSize)
+            
+            lastBrokenLowIdx := targetLowIdx
