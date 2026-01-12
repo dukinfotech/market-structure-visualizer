@@ -181,7 +181,7 @@ if array.size(swingHighs) > 0
     if currentClose > targetHigh and targetHighIdx != lastBrokenHighIdx
         string txt = "BOS"
         if array.size(swingHighs) > 1
-             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
