@@ -1,5 +1,5 @@
 // @version=5
-indicator("Market Structure [Pivot Based]", overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
+indicator("Market Structure [Pivot Based]", overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=5000, explicit_plot_zorder=true)
 
 // -----------------------------------------------------------------------------
 // CÁC THAM SỐ ĐẦU VÀO (INPUTS)
@@ -14,7 +14,7 @@ showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
 grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
 showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
 showCHOCH = input.bool(true, "Hiển thị CHOCH", group=grp_structure)
-lblSize = input.string(size.small, "Kích thước Nhãn", options=[size.tiny, size.small, size.normal, size.large], group=grp_structure)
+// Fixed Label Size -> Removed Input
 
 // -----------------------------------------------------------------------------
 // BIẾN VÀ KIỂU DỮ LIỆU
@@ -129,13 +129,13 @@ if array.size(swingHighs) > 0
         string txt = "BOS"
         // Determine BOS vs CHOCH
         if array.size(swingHighs) > 1
-             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Color Green (Bullish Break)
-            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=color.green, style=line.style_solid, width=1)
-            label.new(currentIndex, targetHigh, txt, color=color.green, style=label.style_label_down, textcolor=color.white, size=lblSize)
+            // Color Blue Dashed, Width 2, Fixed Size Small
+            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=color.blue, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetHigh, txt, color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
             
             // Mark as broken so we don't draw multiple times for the same swing
             lastBrokenHighIdx := targetHighIdx
@@ -154,8 +154,8 @@ if array.size(swingLows) > 0
                 txt := "CHOCH"
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Color Red (Bearish Break)
-            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=color.red, style=line.style_solid, width=1)
-            label.new(currentIndex, targetLow, txt, color=color.red, style=label.style_label_up, textcolor=color.white, size=lblSize)
+             // Color Blue Dashed, Width 2, Fixed Size Small
+            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=color.blue, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetLow, txt, color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
             
             lastBrokenLowIdx := targetLowIdx
