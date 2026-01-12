@@ -10,7 +10,6 @@ lengthRight = input.int(5, "Số nến bên phải Pivot", minval=1, group=grp_s
 
 grp_visual = "Cài đặt Hiển thị"
 showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
-// Color Up/Down và LineWidth đã được fix cứng theo yêu cầu, không cần input
 
 grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
 showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
@@ -22,61 +21,54 @@ lblSize = input.string(size.small, "Kích thước Nhãn", options=[size.tiny, s
 // -----------------------------------------------------------------------------
 // BIẾN VÀ KIỂU DỮ LIỆU
 // -----------------------------------------------------------------------------
-// Theo dõi hướng hiện tại và các điểm Đỉnh/Đáy gần nhất
-// Direction: 1 = Xu hướng tăng (đang tìm đỉnh), -1 = Xu hướng giảm (đang tìm đáy)
 var int direction = 0 
-// Các điểm Pivot đã xác nhận gần nhất
 var float lastHigh = na
 var float lastLow = na
-var int lastHighIndex = na
+var int lastHighIndex = na // Trở lại dùng Index
 var int lastLowIndex = na
 
-// Mảng lưu trữ các điểm swing để phân tích cấu trúc thị trường
 var float[] swingHighs = array.new_float()
 var int[] swingHighIndices = array.new_int()
 var float[] swingLows = array.new_float()
 var int[] swingLowIndices = array.new_int()
 
-// Biến lưu đường ZigZag hiện tại và Label hiện tại
 var line zigzagLine = na
 var label currentLabel = na 
 
 // -----------------------------------------------------------------------------
-// TÍNH TOÁN PIVOT (ĐỈNH/ĐÁY)
+// TÍNH TOÁN PIVOT
 // -----------------------------------------------------------------------------
 ph = ta.pivothigh(high, lengthLeft, lengthRight)
 pl = ta.pivotlow(low, lengthLeft, lengthRight)
 
 // -----------------------------------------------------------------------------
-// LOGIC: ZIGZAG VÀ CẤU TRÚC THỊ TRƯỜNG
+// LOGIC: ZIGZAG (DÙNG BAR_INDEX ĐỂ CHÍNH XÁC VỚI NẾN)
 // -----------------------------------------------------------------------------
-// Khi tìm thấy một Pivot High (Đỉnh) mới
+// Pivot Index: bar_index hiện tại trừ đi độ trễ (lengthRight)
+pivotIndex = bar_index - lengthRight
+
 if not na(ph)
-    // Nếu chưa xác định hướng (lần chạy đầu tiên)
     if direction == 0
         direction := 1
         lastHigh := ph
-        lastHighIndex := bar_index - lengthRight
+        lastHighIndex := pivotIndex
         if showZigZag
-            zigzagLine := line.new(bar_index - lengthRight, ph, bar_index - lengthRight, ph, color=color.blue, width=2)
+            zigzagLine := line.new(lastHighIndex, ph, lastHighIndex, ph, color=color.blue, width=2)
             currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
-    // Nếu đang trong xu hướng tăng (đang tìm đỉnh)
     else if direction == 1 
-        // Nếu đỉnh mới này cao hơn đỉnh "tạm thời" trước đó
         if ph > lastHigh
             lastHigh := ph
-            lastHighIndex := bar_index - lengthRight
+            lastHighIndex := pivotIndex
             if showZigZag
                 line.set_xy2(zigzagLine, lastHighIndex, lastHigh)
                 label.set_xy(currentLabel, lastHighIndex, lastHigh)
                 label.set_text(currentLabel, str.tostring(lastHigh, format.mintick))
                 
-    // Nếu đang trong xu hướng giảm (đang tìm đáy) -> Đảo chiều sang Tăng
     else 
         direction := 1
         lastHigh := ph
-        lastHighIndex := bar_index - lengthRight
+        lastHighIndex := pivotIndex
         
         array.push(swingHighs, lastHigh)
         array.push(swingHighIndices, lastHighIndex)
@@ -85,33 +77,28 @@ if not na(ph)
             zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, lastHigh, color=color.blue, width=2)
             currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
-// Khi tìm thấy một Pivot Low (Đáy) mới
 if not na(pl)
-    // Khởi tạo lần đầu
     if direction == 0
         direction := -1
         lastLow := pl
-        lastLowIndex := bar_index - lengthRight
+        lastLowIndex := pivotIndex
         if showZigZag
-            zigzagLine := line.new(bar_index - lengthRight, pl, bar_index - lengthRight, pl, color=color.blue, width=2)
+            zigzagLine := line.new(lastLowIndex, pl, lastLowIndex, pl, color=color.blue, width=2)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
-    // Nếu đang trong xu hướng giảm (đang tìm đáy)
     else if direction == -1 
-        // Nếu đáy mới thấp hơn đáy "tạm thời"
         if pl < lastLow 
             lastLow := pl
-            lastLowIndex := bar_index - lengthRight
+            lastLowIndex := pivotIndex
             if showZigZag
                 line.set_xy2(zigzagLine, lastLowIndex, lastLow)
                 label.set_xy(currentLabel, lastLowIndex, lastLow)
                 label.set_text(currentLabel, str.tostring(lastLow, format.mintick))
     
-    // Nếu đang trong xu hướng tăng -> Đảo chiều sang Giảm
     else 
         direction := -1
         lastLow := pl
-        lastLowIndex := bar_index - lengthRight
+        lastLowIndex := pivotIndex
         
         array.push(swingLows, lastLow)
         array.push(swingLowIndices, lastLowIndex)
@@ -121,12 +108,15 @@ if not na(pl)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
 // -----------------------------------------------------------------------------
-// XÁC ĐỊNH BOS VÀ CHOCH (PHÁ VỠ CẤU TRÚC)
+// BOS / CHOCH
 // -----------------------------------------------------------------------------
 var bool bosUpDetected = false
 var bool bosDownDetected = false
 var int lastBrokenHighIndex = 0
 var int lastBrokenLowIndex = 0
+
+// Current Bar Index
+currentIndex = bar_index
 
 if array.size(swingHighs) > 0 and array.size(swingLows) > 0
     float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
@@ -135,10 +125,11 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
     float prevLow = array.get(swingLows, array.size(swingLows)-1)
     int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
 
-    // --- XU HƯỚNG TĂNG (BULLISH BREAK) ---
+    // --- BULLISH BREAK ---
     bool isBullCase = close > prevHigh
     bool isBearCase = close < prevLow
     
+    // Check BOS
     if isBullCase and prevHighIdx != lastBrokenHighIndex
         string txt = "BOS"
         color col = colorBOS
@@ -150,12 +141,13 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
                 col := colorCHOCH
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevHighIdx, prevHigh, bar_index, prevHigh, color=col, style=line.style_solid, width=1)
-            label.new(bar_index, prevHigh, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=col, size=lblSize)
+            // Vẽ đường ngang BOS/CHOCH
+            line.new(prevHighIdx, prevHigh, currentIndex, prevHigh, color=col, style=line.style_solid, width=1)
+            label.new(currentIndex, prevHigh, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=col, size=lblSize)
             
             lastBrokenHighIndex := prevHighIdx
 
-    // --- XU HƯỚNG GIẢM (BEARISH BREAK) ---
+    // --- BEARISH BREAK ---
     if isBearCase and prevLowIdx != lastBrokenLowIndex
         string txt = "BOS"
         color col = colorBOS
@@ -167,19 +159,18 @@ if array.size(swingHighs) > 0 and array.size(swingLows) > 0
                 col := colorCHOCH
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevLowIdx, prevLow, bar_index, prevLow, color=col, style=line.style_solid, width=1)
-            label.new(bar_index, prevLow, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=col, size=lblSize)
+            line.new(prevLowIdx, prevLow, currentIndex, prevLow, color=col, style=line.style_solid, width=1)
+            label.new(currentIndex, prevLow, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=col, size=lblSize)
             
             lastBrokenLowIndex := prevLowIdx
 
 // -----------------------------------------------------------------------------
-// PHÁT HIỆN PHÁ VỠ BẰNG RÂU NẾN (WICK BREAK)
+// WICK BREAK (WEAK BREAK)
 // -----------------------------------------------------------------------------
 if array.size(swingHighs) > 0
     float prevHigh = array.get(swingHighs, array.size(swingHighs)-1)
     int prevHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
 
-    // Wick Break Up
     if high > prevHigh and close <= prevHigh and prevHighIdx != lastBrokenHighIndex
         string txt = "BOS"
         color col = colorBOS
@@ -189,13 +180,12 @@ if array.size(swingHighs) > 0
                 col := colorCHOCH
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevHighIdx, prevHigh, bar_index, prevHigh, color=col, style=line.style_dashed, width=1)
+            line.new(prevHighIdx, prevHigh, currentIndex, prevHigh, color=col, style=line.style_dashed, width=1)
 
 if array.size(swingLows) > 0
     float prevLow = array.get(swingLows, array.size(swingLows)-1)
     int prevLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
 
-    // Wick Break Down
     if low < prevLow and close >= prevLow and prevLowIdx != lastBrokenLowIndex
         string txt = "BOS"
         color col = colorBOS
@@ -205,4 +195,4 @@ if array.size(swingLows) > 0
                 col := colorCHOCH
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(prevLowIdx, prevLow, bar_index, prevLow, color=col, style=line.style_dashed, width=1)
+            line.new(prevLowIdx, prevLow, currentIndex, prevLow, color=col, style=line.style_dashed, width=1)
