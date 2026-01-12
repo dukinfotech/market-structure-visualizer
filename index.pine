@@ -2,6 +2,28 @@
 indicator("Market Structure [Pivot Based]", overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=5000, explicit_plot_zorder=true)
 
 // -----------------------------------------------------------------------------
+// HELPER: GET HIGHER TIMEFRAME
+// -----------------------------------------------------------------------------
+getHigherTF(tf) =>
+    float tfInMin = timeframe.in_seconds(tf) / 60
+    string res = "D" 
+    if tfInMin < 5
+        res := "5"
+    else if tfInMin < 15
+        res := "15"
+    else if tfInMin < 60
+        res := "60"
+    else if tfInMin < 240
+        res := "240"
+    else if tfInMin < 1440
+        res := "D"
+    else if tfInMin < 10080
+        res := "W"
+    else 
+        res := "M"
+    res
+
+// -----------------------------------------------------------------------------
 // CÁC THAM SỐ ĐẦU VÀO (INPUTS)
 // -----------------------------------------------------------------------------
 grp_settings = "Cài đặt ZigZag"
@@ -14,7 +36,15 @@ showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
 grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
 showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
 showCHOCH = input.bool(true, "Hiển thị CHOCH", group=grp_structure)
-// Fixed Label Size -> Removed Input
+
+// -----------------------------------------------------------------------------
+// HTF DATA
+// -----------------------------------------------------------------------------
+htf = getHigherTF(timeframe.period)
+// Check if HTF Candle is Green (Close >= Open). Using Lookahead to match historical bars properly?
+// Default security without lookahead uses the closed bar data.
+// For alignment, checking the closed state or current state is robust.
+htfBullish = request.security(syminfo.tickerid, htf, close >= open)
 
 // -----------------------------------------------------------------------------
 // BIẾN VÀ KIỂU DỮ LIỆU
@@ -42,17 +72,26 @@ pl = ta.pivotlow(low, lengthLeft, lengthRight)
 
 pivotIndex = bar_index - lengthRight
 
+// Determine HTF Status AT THE TIME OF PIVOT (approximate)
+// Because we detect pivot at 'lengthRight' bars ago.
+// We check htfBullish status at that index.
+isHtfBull = htfBullish[lengthRight]
+
 if not na(ph)
+    // --- FOUND PIVOT HIGH ---
     if direction == 0
         direction := 1
         lastHigh := ph
         lastHighIndex := pivotIndex
+        // Init (Undefined)
         if showZigZag
             zigzagLine := line.new(lastHighIndex, ph, lastHighIndex, ph, color=color.blue, width=2)
             currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
     else if direction == 1 
-        // Making Higher High?
+        // --- UPTREND EXTENSION ---
+        // Updating Higher High. Leg is still UP (Bullish).
+        // Check Alignment: Leg is UP. Is HTF Bullish?
         if ph > lastHigh
             lastHigh := ph
             lastHighIndex := pivotIndex
@@ -61,8 +100,13 @@ if not na(ph)
                 label.set_xy(currentLabel, lastHighIndex, lastHigh)
                 label.set_text(currentLabel, str.tostring(lastHigh, format.mintick))
                 
+                // Update Width Live
+                // Leg Direction: UP. HTF: Bullish?
+                _width = isHtfBull ? 5 : 2
+                line.set_width(zigzagLine, _width)
+                
     else 
-        // Switch to Uptrend
+        // --- SWITCH TO UPTREND ---
         direction := 1
         lastHigh := ph
         lastHighIndex := pivotIndex
@@ -71,10 +115,14 @@ if not na(ph)
         array.push(swingHighIndices, lastHighIndex)
 
         if showZigZag
-            zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, lastHigh, color=color.blue, width=2)
+            // Draw Line from LAST LOW to THIS HIGH (Up Wave)
+            // Leg Direction: UP. HTF: Bullish?
+            _width = isHtfBull ? 5 : 2
+            zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, lastHigh, color=color.blue, width=_width)
             currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
 
 if not na(pl)
+    // --- FOUND PIVOT LOW ---
     if direction == 0
         direction := -1
         lastLow := pl
@@ -84,7 +132,9 @@ if not na(pl)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
     else if direction == -1 
-        // Making Lower Low?
+        // --- DOWNTREND EXTENSION ---
+        // Updating Lower Low. Leg is DOWN (Bearish).
+        // Check Alignment: Leg is DOWN. Is HTF Bearish (NOT Bullish)?
         if pl < lastLow 
             lastLow := pl
             lastLowIndex := pivotIndex
@@ -92,9 +142,14 @@ if not na(pl)
                 line.set_xy2(zigzagLine, lastLowIndex, lastLow)
                 label.set_xy(currentLabel, lastLowIndex, lastLow)
                 label.set_text(currentLabel, str.tostring(lastLow, format.mintick))
+                
+                // Update Width Live
+                // Leg Direction: DOWN. HTF: Bearish? (not htfBullish)
+                _width = (not isHtfBull) ? 5 : 2
+                line.set_width(zigzagLine, _width)
     
     else 
-        // Switch to Downtrend
+        // --- SWITCH TO DOWNTREND ---
         direction := -1
         lastLow := pl
         lastLowIndex := pivotIndex
@@ -103,14 +158,15 @@ if not na(pl)
         array.push(swingLowIndices, lastLowIndex)
 
         if showZigZag
-            zigzagLine := line.new(lastHighIndex, lastHigh, lastLowIndex, lastLow, color=color.blue, width=2)
+            // Draw Line from LAST HIGH to THIS LOW (Down Wave)
+            // Leg Direction: DOWN. HTF: Bearish?
+            _width = (not isHtfBull) ? 5 : 2
+            zigzagLine := line.new(lastHighIndex, lastHigh, lastLowIndex, lastLow, color=color.blue, width=_width)
             currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
 
 // -----------------------------------------------------------------------------
 // BOS / CHOCH DETECTION
 // -----------------------------------------------------------------------------
-// Chỉ hiển thị khi giá đóng cửa phá vỡ lastHighIndex hoặc lastLowIndex (trong mảng swing)
-
 var int lastBrokenHighIdx = 0
 var int lastBrokenLowIdx = 0
 
@@ -118,35 +174,26 @@ var int lastBrokenLowIdx = 0
 currentClose = close
 currentIndex = bar_index
 
-// Check Break of Structure High
 if array.size(swingHighs) > 0
-    // Get the Last Confirmed Swing High from history
     float targetHigh = array.get(swingHighs, array.size(swingHighs)-1)
     int targetHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
 
-    // CHECK: Close price breaks the targetHigh AND we haven't marked this specific high as broken yet
     if currentClose > targetHigh and targetHighIdx != lastBrokenHighIdx
         string txt = "BOS"
-        // Determine BOS vs CHOCH
         if array.size(swingHighs) > 1
-            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            // Color Blue Dashed, Width 2, Fixed Size Small
             line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=color.blue, style=line.style_dashed, width=2)
             label.new(currentIndex, targetHigh, txt, color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
             
-            // Mark as broken so we don't draw multiple times for the same swing
             lastBrokenHighIdx := targetHighIdx
 
-// Check Break of Structure Low
 if array.size(swingLows) > 0
-    // Get the Last Confirmed Swing Low from history
     float targetLow = array.get(swingLows, array.size(swingLows)-1)
     int targetLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
 
-    // CHECK: Close price breaks the targetLow AND we haven't marked this specific low as broken yet
     if currentClose < targetLow and targetLowIdx != lastBrokenLowIdx
         string txt = "BOS"
         if array.size(swingLows) > 1
@@ -154,7 +201,6 @@ if array.size(swingLows) > 0
                 txt := "CHOCH"
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-             // Color Blue Dashed, Width 2, Fixed Size Small
             line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=color.blue, style=line.style_dashed, width=2)
             label.new(currentIndex, targetLow, txt, color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
             
