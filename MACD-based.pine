@@ -1,0 +1,254 @@
+// @version=5
+indicator("Market Structure [MACD Based]", overlay=true, max_lines_count=500, max_labels_count=500, max_bars_back=5000, explicit_plot_zorder=true)
+
+// -----------------------------------------------------------------------------
+// HELPER
+// -----------------------------------------------------------------------------
+getHigherTF(tf) =>
+    float tfInMin = timeframe.in_seconds(tf) / 60
+    string res = "D" 
+    if tfInMin < 5
+        res := "5"
+    else if tfInMin < 15
+        res := "15"
+    else if tfInMin < 60
+        res := "60"
+    else if tfInMin < 240
+        res := "240"
+    else if tfInMin < 1440
+        res := "D"
+    else if tfInMin < 10080
+        res := "W"
+    else 
+        res := "M"
+    res
+
+// -----------------------------------------------------------------------------
+// INPUTS
+// -----------------------------------------------------------------------------
+grp_macd = "Cài đặt MACD"
+fastLength = input.int(12, "Fast Length", group=grp_macd)
+slowLength = input.int(26, "Slow Length", group=grp_macd)
+signalLength = input.int(9, "Signal Length", group=grp_macd)
+
+grp_visual = "Cài đặt Hiển thị"
+showZigZag = input.bool(true, "Hiển thị đường ZigZag", group=grp_visual)
+
+grp_structure = "Cài đặt Cấu trúc (BOS/CHOCH)"
+showBOS = input.bool(true, "Hiển thị BOS", group=grp_structure)
+showCHOCH = input.bool(true, "Hiển thị CHOCH", group=grp_structure)
+
+// -----------------------------------------------------------------------------
+// MACD CALCULATION & ZIGZAG LOGIC
+// -----------------------------------------------------------------------------
+[macdLine, signalLine, _] = ta.macd(close, fastLength, slowLength, signalLength)
+
+// Detect Cross
+crossUp = ta.crossover(macdLine, signalLine)
+crossDown = ta.crossunder(macdLine, signalLine)
+
+// State Variables for Tracking Cycle Extremes
+var float highestInCycle = 0.0
+var int highestIndexInCycle = 0
+var int highestTimeInCycle = 0
+
+var float lowestInCycle = 1000000.0
+var int lowestIndexInCycle = 0
+var int lowestTimeInCycle = 0
+
+var bool isBullCycle = false
+
+// Output "Signals"
+float ph = na
+float pl = na
+int ph_index = na
+int pl_index = na
+int ph_time = na
+int pl_time = na
+
+// Cycle Logic
+if crossUp 
+    if not isBullCycle 
+        pl := lowestInCycle
+        pl_index := lowestIndexInCycle
+        pl_time := lowestTimeInCycle
+    
+    isBullCycle := true
+    highestInCycle := high
+    highestIndexInCycle := bar_index
+    highestTimeInCycle := time
+
+else if crossDown 
+    if isBullCycle 
+        ph := highestInCycle
+        ph_index := highestIndexInCycle
+        ph_time := highestTimeInCycle
+    
+    isBullCycle := false
+    lowestInCycle := low
+    lowestIndexInCycle := bar_index
+    lowestTimeInCycle := time
+
+else
+    if isBullCycle
+        if high > highestInCycle
+            highestInCycle := high
+            highestIndexInCycle := bar_index
+            highestTimeInCycle := time
+    else
+        if low < lowestInCycle
+            lowestInCycle := low
+            lowestIndexInCycle := bar_index
+            lowestTimeInCycle := time
+
+// -----------------------------------------------------------------------------
+// DATA FETCHING (HTF)
+// -----------------------------------------------------------------------------
+htf = getHigherTF(timeframe.period)
+htfBullish = request.security(syminfo.tickerid, htf, close >= open)
+
+// -----------------------------------------------------------------------------
+// VARIABLES
+// -----------------------------------------------------------------------------
+var int direction = 0 
+var float lastHigh = na
+var float lastLow = na
+var int lastHighIndex = na 
+var int lastLowIndex = na
+
+var int timeOfLastMainHigh = 0
+var int timeOfLastMainLow = 0
+
+var float[] swingHighs = array.new_float()
+var int[] swingHighIndices = array.new_int()
+var float[] swingLows = array.new_float()
+var int[] swingLowIndices = array.new_int()
+
+var line zigzagLine = na
+var label currentLabel = na 
+
+var int trendDirection = 0 
+// var bool currentLegIsRetracement = false // Removed
+
+// -----------------------------------------------------------------------------
+// MAIN ZIGZAG LOGIC (MACD)
+// -----------------------------------------------------------------------------
+if not na(ph)
+    if direction == 0
+        direction := 1
+        lastHigh := ph
+        lastHighIndex := ph_index
+        timeOfLastMainHigh := ph_time
+        if showZigZag
+            zigzagLine := line.new(lastHighIndex, ph, lastHighIndex, ph, color=color.blue, width=2)
+            currentLabel := label.new(lastHighIndex, lastHigh, str.tostring(lastHigh, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
+
+    else if direction == 1 
+        if ph > lastHigh
+            lastHigh := ph
+            lastHighIndex := ph_index
+            timeOfLastMainHigh := ph_time
+            if showZigZag
+                line.set_xy2(zigzagLine, lastHighIndex, lastHigh)
+                label.set_xy(currentLabel, lastHighIndex, lastHigh)
+                label.set_text(currentLabel, str.tostring(lastHigh, format.mintick))
+        else
+            int nothing = 0
+
+    else // direction == -1 (Was Low, now Found High)
+        direction := 1
+        lastHigh := ph
+        lastHighIndex := ph_index
+        timeOfLastMainHigh := ph_time
+        
+        array.push(swingLows, lastLow)
+        array.push(swingLowIndices, lastLowIndex)
+
+        if showZigZag
+            _width = htfBullish ? 5 : 2 
+            zigzagLine := line.new(lastLowIndex, lastLow, lastHighIndex, ph, color=color.blue, width=_width)
+            currentLabel := label.new(lastHighIndex, ph, str.tostring(ph, format.mintick), color=color.green, style=label.style_label_down, textcolor=color.white, size=size.small)
+
+if not na(pl)
+    if direction == 0
+        direction := -1
+        lastLow := pl
+        lastLowIndex := pl_index
+        timeOfLastMainLow := pl_time
+        if showZigZag
+            zigzagLine := line.new(lastLowIndex, pl, lastLowIndex, pl, color=color.blue, width=2)
+            currentLabel := label.new(lastLowIndex, lastLow, str.tostring(lastLow, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
+            
+    else if direction == -1 
+        if pl < lastLow 
+            lastLow := pl
+            lastLowIndex := pl_index
+            timeOfLastMainLow := pl_time
+            if showZigZag
+                line.set_xy2(zigzagLine, lastLowIndex, lastLow)
+                label.set_xy(currentLabel, lastLowIndex, lastLow)
+                label.set_text(currentLabel, str.tostring(lastLow, format.mintick))
+    
+    else // direction == 1 (Was High, now Found Low)
+        direction := -1
+        lastLow := pl
+        lastLowIndex := pl_index
+        timeOfLastMainLow := pl_time
+        
+        array.push(swingHighs, lastHigh)
+        array.push(swingHighIndices, lastHighIndex)
+
+        if showZigZag
+            _width = (not htfBullish) ? 5 : 2
+            zigzagLine := line.new(lastHighIndex, lastHigh, lastLowIndex, pl, color=color.blue, width=_width)
+            currentLabel := label.new(lastLowIndex, pl, str.tostring(pl, format.mintick), color=color.red, style=label.style_label_up, textcolor=color.white, size=size.small)
+
+
+// -----------------------------------------------------------------------------
+// BOS / CHOCH
+// -----------------------------------------------------------------------------
+var int lastBrokenHighIdx = 0
+var int lastBrokenLowIdx = 0
+
+currentClose = close
+currentIndex = bar_index
+
+if array.size(swingHighs) > 0
+    float targetHigh = array.get(swingHighs, array.size(swingHighs)-1)
+    int targetHighIdx = array.get(swingHighIndices, array.size(swingHighIndices)-1)
+
+    if currentClose > targetHigh and targetHighIdx != lastBrokenHighIdx
+        string txt = "BOS"
+        color col = color.blue 
+        
+        if array.size(swingHighs) > 1
+             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+                txt := "CHOCH"
+                col := color.orange
+        
+        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
+            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=col, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetHigh, txt, color=col, style=label.style_label_down, textcolor=color.white, size=size.small)
+            
+            lastBrokenHighIdx := targetHighIdx
+            trendDirection := 1
+
+if array.size(swingLows) > 0
+    float targetLow = array.get(swingLows, array.size(swingLows)-1)
+    int targetLowIdx = array.get(swingLowIndices, array.size(swingLowIndices)-1)
+
+    if currentClose < targetLow and targetLowIdx != lastBrokenLowIdx
+        string txt = "BOS"
+        color col = color.blue 
+
+        if array.size(swingLows) > 1
+            if targetLow > array.get(swingLows, array.size(swingLows)-2)
+                txt := "CHOCH"
+                col := color.orange
+
+        if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
+            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=col, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetLow, txt, color=col, style=label.style_label_up, textcolor=color.white, size=size.small)
+            
+            lastBrokenLowIdx := targetLowIdx
+            trendDirection := -1
