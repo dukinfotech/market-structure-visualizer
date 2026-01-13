@@ -41,9 +41,6 @@ showCHOCH = input.bool(true, "Hiển thị CHOCH", group=grp_structure)
 // HTF DATA
 // -----------------------------------------------------------------------------
 htf = getHigherTF(timeframe.period)
-// Check if HTF Candle is Green (Close >= Open). Using Lookahead to match historical bars properly?
-// Default security without lookahead uses the closed bar data.
-// For alignment, checking the closed state or current state is robust.
 htfBullish = request.security(syminfo.tickerid, htf, close >= open)
 
 // -----------------------------------------------------------------------------
@@ -73,8 +70,6 @@ pl = ta.pivotlow(low, lengthLeft, lengthRight)
 pivotIndex = bar_index - lengthRight
 
 // Determine HTF Status AT THE TIME OF PIVOT (approximate)
-// Because we detect pivot at 'lengthRight' bars ago.
-// We check htfBullish status at that index.
 isHtfBull = htfBullish[lengthRight]
 
 if not na(ph)
@@ -90,8 +85,6 @@ if not na(ph)
 
     else if direction == 1 
         // --- UPTREND EXTENSION ---
-        // Updating Higher High. Leg is still UP (Bullish).
-        // Check Alignment: Leg is UP. Is HTF Bullish?
         if ph > lastHigh
             lastHigh := ph
             lastHighIndex := pivotIndex
@@ -133,8 +126,6 @@ if not na(pl)
 
     else if direction == -1 
         // --- DOWNTREND EXTENSION ---
-        // Updating Lower Low. Leg is DOWN (Bearish).
-        // Check Alignment: Leg is DOWN. Is HTF Bearish (NOT Bullish)?
         if pl < lastLow 
             lastLow := pl
             lastLowIndex := pivotIndex
@@ -180,13 +171,16 @@ if array.size(swingHighs) > 0
 
     if currentClose > targetHigh and targetHighIdx != lastBrokenHighIdx
         string txt = "BOS"
+        color col = color.blue // Default BOS color
+
         if array.size(swingHighs) > 1
-            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
+                col := color.yellow // CHOCH color
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=color.blue, style=line.style_dashed, width=2)
-            label.new(currentIndex, targetHigh, txt, color=color.blue, style=label.style_label_down, textcolor=color.white, size=size.small)
+            line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=col, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetHigh, txt, color=col, style=label.style_label_down, textcolor=color.white, size=size.small)
             
             lastBrokenHighIdx := targetHighIdx
 
@@ -196,12 +190,15 @@ if array.size(swingLows) > 0
 
     if currentClose < targetLow and targetLowIdx != lastBrokenLowIdx
         string txt = "BOS"
+        color col = color.blue // Default BOS color
+
         if array.size(swingLows) > 1
             if targetLow > array.get(swingLows, array.size(swingLows)-2)
                 txt := "CHOCH"
+                col := color.yellow // CHOCH color
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
-            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=color.blue, style=line.style_dashed, width=2)
-            label.new(currentIndex, targetLow, txt, color=color.blue, style=label.style_label_up, textcolor=color.white, size=size.small)
+            line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=col, style=line.style_dashed, width=2)
+            label.new(currentIndex, targetLow, txt, color=col, style=label.style_label_up, textcolor=color.white, size=size.small)
             
             lastBrokenLowIdx := targetLowIdx
