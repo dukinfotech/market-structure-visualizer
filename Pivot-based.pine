@@ -174,9 +174,9 @@ if array.size(swingHighs) > 0
         color col = color.blue // Default BOS color
 
         if array.size(swingHighs) > 1
-             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
-                col := color.yellow // CHOCH color
+                col := color.orange // CHOCH color
         
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
             line.new(targetHighIdx, targetHigh, currentIndex, targetHigh, color=col, style=line.style_dashed, width=2)
@@ -195,7 +195,7 @@ if array.size(swingLows) > 0
         if array.size(swingLows) > 1
             if targetLow > array.get(swingLows, array.size(swingLows)-2)
                 txt := "CHOCH"
-                col := color.yellow // CHOCH color
+                col := color.orange // CHOCH color
 
         if (txt == "BOS" and showBOS) or (txt == "CHOCH" and showCHOCH)
             line.new(targetLowIdx, targetLow, currentIndex, targetLow, color=col, style=line.style_dashed, width=2)

@@ -222,7 +222,7 @@ if array.size(swingHighs) > 0
         color col = color.blue 
         
         if array.size(swingHighs) > 1
-             if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
+            if targetHigh < array.get(swingHighs, array.size(swingHighs)-2)
                 txt := "CHOCH"
                 col := color.orange
         
